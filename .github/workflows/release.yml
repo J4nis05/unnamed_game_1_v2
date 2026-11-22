@@ -62,6 +62,19 @@ jobs:
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "Version: $version (release: $release)"
 
+      - name: Check shaders compile under OpenGL ES (Android/iOS) and desktop GL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libegl-mesa0 > /dev/null
+          gh release download "$LOVE_VERSION" -R love2d/love -p "love-${LOVE_VERSION}-x86_64.AppImage" -D "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP"
+          chmod +x "love-${LOVE_VERSION}-x86_64.AppImage"
+          "./love-${LOVE_VERSION}-x86_64.AppImage" --appimage-extract > /dev/null
+          cd "$GITHUB_WORKSPACE"
+          xvfb-run -a scripts/check-shaders.sh "$RUNNER_TEMP/squashfs-root/bin/love"
+
       - name: Build .love
         run: scripts/build-love.sh "dist/${GAME_NAME}.love"
 
