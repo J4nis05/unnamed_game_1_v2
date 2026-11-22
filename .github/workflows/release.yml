@@ -276,7 +276,7 @@ jobs:
   ios:
     name: iOS
     needs: love
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -292,6 +292,21 @@ jobs:
           ditto -x -k "love-${LOVE_VERSION}-ios-source.zip" .
           ditto -x -k "love-${LOVE_VERSION}-apple-libraries.zip" .
           mv love-apple-dependencies/iOS/libraries "love-${LOVE_VERSION}-ios-source/platform/xcode/ios/libraries"
+
+      # LÖVE 11.4 (SDL 2.0) predates the UIScene lifecycle, and apps built with the
+      # iOS 27 SDK must adopt it or they crash at launch on iOS 27 (incl. iPhone Duo).
+      # Built with the iOS 26 SDK, the app runs on iOS 27 in compatibility mode.
+      - name: Select Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS SDK $sdk"
+          if [ "${sdk%%.*}" -ge 27 ]; then
+            echo "::error::iOS SDK $sdk requires the UIScene lifecycle, which LÖVE 11.4 lacks"
+            exit 1
+          fi
 
       - name: Build love-ios (unsigned)
         working-directory: love-${{ env.LOVE_VERSION }}-ios-source/platform/xcode
@@ -365,10 +380,10 @@ jobs:
           | Platform | File | How to run |
           | --- | --- | --- |
           | Windows (64-bit) | `*-windows-x64.zip` | Unzip and run `Mordoria.exe`. If SmartScreen warns, click *More info* → *Run anyway*. |
-          | macOS (Intel & Apple Silicon) | `*-macos.zip` | Unzip and move *Towers of Mordoria* to Applications. The app is not notarized: right-click → *Open* the first time, or run `xattr -cr "/Applications/Towers of Mordoria.app"`. |
+          | macOS (Intel & Apple Silicon) | `*-macos.zip` | Unzip and move *Towers of Mordoria* to Applications. The app is not notarized, so the first launch is blocked: open *System Settings → Privacy & Security* and click *Open Anyway*, or run `xattr -cr "/Applications/Towers of Mordoria.app"`. |
           | Linux (x86_64) | `*-linux-x86_64.AppImage` | `chmod +x` the file and run it. |
           | Android | `*-android.apk` | Allow installing from unknown sources and open the APK. |
-          | iOS / iPadOS | `*-ios-unsigned.ipa` | Unsigned; sideload with AltStore, SideStore or Sideloadly (they sign it with your Apple ID). |
+          | iOS / iPadOS | `*-ios-unsigned.ipa` | Unsigned; sideload with AltStore, SideStore or Sideloadly, which sign it with your own (free) Apple ID. With a free Apple ID the app must be re-signed every 7 days. Supports iOS 12 and later, including iPhone Duo. |
           | Any platform with LÖVE 11.4 | `*.love` | `love Mordoria-*.love` |
 
           The game was designed for keyboard and mouse at 1920×1080; mobile builds are experimental.
