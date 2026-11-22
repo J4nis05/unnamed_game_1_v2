@@ -19,12 +19,12 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) 
     
     if (current_alpha > 0.1) {
         // Current pixel is opaque, check if any neighbor is transparent
-        vec2 offsets[4] = vec2[4](
-            vec2(0.0, -1.0),  // up
-            vec2(0.0, 1.0),   // down
-            vec2(-1.0, 0.0),  // left
-            vec2(1.0, 0.0)    // right
-        );
+        // GLSL ES 1.00 has no array constructors.
+        vec2 offsets[4];
+        offsets[0] = vec2(0.0, -1.0);  // up
+        offsets[1] = vec2(0.0, 1.0);   // down
+        offsets[2] = vec2(-1.0, 0.0);  // left
+        offsets[3] = vec2(1.0, 0.0);   // right
         
         for (int i = 0; i < 4; i++) {
             vec2 sample_coords = texture_coords + offsets[i] * texel_size;

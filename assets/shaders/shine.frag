@@ -56,14 +56,15 @@
 //     fragColor = vec4(baseColor + finalShine, 1.0);
 // }
 
-uniform float u_time;
-uniform vec2 u_resolution;
-uniform float u_intensity = 0.8;
-uniform vec2 u_mouse;
-uniform float u_preserve_color = 0.7; // New uniform to control color preservation
+// Shared by the vertex and pixel stages, so GLSL ES needs matching precision.
+uniform highp float u_time;
+uniform highp vec2 u_resolution;
+const float u_intensity = 0.8;
+uniform highp vec2 u_mouse;
+const float u_preserve_color = 0.7; // Controls color preservation
 
 float easeInSine(float x) {
-  return 1 - cos((x * 3.14159) / 2);
+  return 1.0 - cos((x * 3.14159) / 2.0);
 }
 
 vec4 effect(vec4 color, Image texture, vec2 texCoords, vec2 screenCoords) {
@@ -100,9 +101,9 @@ vec4 effect(vec4 color, Image texture, vec2 texCoords, vec2 screenCoords) {
     float shine3 = smoothstep(-bandWidth3, 0.0, bandPosition3) * smoothstep(bandWidth3, 0.0, bandPosition3);
 
     // Modified shine colors to be less overwhelming
-    vec3 shine1color = vec3(sin(u_time + 0) * 0.3 + 0.5, 0.8, 0.9);
-    vec3 shine2color = vec3(sin(u_time + 1) * 0.3 + 0.5, 0.8, 0.9);
-    vec3 shine3color = vec3(sin(u_time + 2) * 0.3 + 0.5, 0.8, 0.9);
+    vec3 shine1color = vec3(sin(u_time + 0.0) * 0.3 + 0.5, 0.8, 0.9);
+    vec3 shine2color = vec3(sin(u_time + 1.0) * 0.3 + 0.5, 0.8, 0.9);
+    vec3 shine3color = vec3(sin(u_time + 2.0) * 0.3 + 0.5, 0.8, 0.9);
 
     vec3 shine = shine1 * shine1color + shine2 * shine2color + shine3 * shine3color;
 
