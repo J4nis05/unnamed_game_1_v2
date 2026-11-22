@@ -21,7 +21,14 @@ that way.  If the game breaks, sorry :)
 ## WARNING AGAIN
 Do not make a PR, i'll just close it or ignore it.
 
-## How to play
+## Download
+Prebuilt Windows, macOS, Linux, Android and iOS builds are on the
+[Releases page](../../releases). See the release notes for how to run each one.
+
+To publish a new release, push a tag such as `v0.1.0`, or run the
+*Build & Release* workflow from the Actions tab with a version number.
+
+## How to play from source
 1. Install Love2D
 1. Clone this repo
 1. Navigate to the directory

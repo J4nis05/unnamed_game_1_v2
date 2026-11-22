@@ -1,0 +1,383 @@
+name: Build & Release
+
+# Builds Towers of Mordoria for Windows, macOS, Linux, Android and iOS.
+# - Pull requests / pushes to master: build everything and upload workflow artifacts.
+# - Pushing a tag like v0.1.0, or running this workflow manually with a version,
+#   additionally publishes a GitHub Release with all the builds attached.
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.1.0). A v-prefixed tag is created on the selected branch."
+        required: true
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LOVE_VERSION: "11.4"
+  GAME_NAME: "Mordoria"
+  GAME_TITLE: "Towers of Mordoria"
+  BUNDLE_ID: "io.github.j4nis05.mordoria"
+
+jobs:
+  love:
+    name: .love archive
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            release=true
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+            release=true
+          else
+            version="0.0.0-dev.${{ github.run_number }}+${GITHUB_SHA::7}"
+            release=false
+          fi
+          version="${version#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+            echo "::error::Version '$version' is not of the form MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "Version: $version (release: $release)"
+
+      - name: Build .love
+        run: scripts/build-love.sh "dist/${GAME_NAME}.love"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: love
+          path: dist/${{ env.GAME_NAME }}.love
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    needs: love
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: love
+
+      - name: Fuse with LÖVE for Windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$LOVE_VERSION" -R love2d/love -p "love-${LOVE_VERSION}-win64.zip"
+          unzip -q "love-${LOVE_VERSION}-win64.zip"
+          src="love-${LOVE_VERSION}-win64"
+          out="${GAME_NAME}-${{ needs.love.outputs.version }}-windows-x64"
+          mkdir "$out"
+          cat "$src/love.exe" "${GAME_NAME}.love" > "$out/${GAME_NAME}.exe"
+          cp "$src"/*.dll "$out/"
+          cp "$src/license.txt" "$out/LOVE-LICENSE.txt"
+          cp LICENSE "$out/LICENSE.md"
+          zip -9 -q -r "$out.zip" "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: ${{ env.GAME_NAME }}-*-windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux
+    needs: love
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: love
+
+      - name: Build AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$LOVE_VERSION" -R love2d/love -p "love-${LOVE_VERSION}-x86_64.AppImage"
+          chmod +x "love-${LOVE_VERSION}-x86_64.AppImage"
+          "./love-${LOVE_VERSION}-x86_64.AppImage" --appimage-extract > /dev/null
+
+          cat squashfs-root/bin/love "${GAME_NAME}.love" > love-fused
+          mv love-fused squashfs-root/bin/love
+          chmod +x squashfs-root/bin/love
+          sed -i \
+            -e "s/^Name=.*/Name=${GAME_TITLE}/" \
+            -e "s/^Comment=.*/Comment=${GAME_TITLE}/" \
+            -e "s/^Categories=.*/Categories=Game;/" \
+            -e "/^NoDisplay=/d" \
+            -e "/^MimeType=/d" \
+            squashfs-root/love.desktop
+
+          curl -fsSL -o appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root \
+            "${GAME_NAME}-${{ needs.love.outputs.version }}-linux-x86_64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: ${{ env.GAME_NAME }}-*-linux-x86_64.AppImage
+          if-no-files-found: error
+
+  macos:
+    name: macOS
+    needs: love
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: love
+
+      - name: Build .app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.love.outputs.version }}
+        run: |
+          gh release download "$LOVE_VERSION" -R love2d/love -p "love-${LOVE_VERSION}-macos.zip"
+          ditto -x -k "love-${LOVE_VERSION}-macos.zip" .
+          app="${GAME_TITLE}.app"
+          mv love.app "$app"
+          cp "${GAME_NAME}.love" "$app/Contents/Resources/${GAME_NAME}.love"
+
+          plist="$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName ${GAME_TITLE}" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${GAME_TITLE}" "$plist" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${GAME_TITLE}" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION%%[-+]*}" "$plist"
+          /usr/libexec/PlistBuddy -c "Delete :UTExportedTypeDeclarations" "$plist" || true
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleDocumentTypes" "$plist" || true
+
+          # Modifying the bundle invalidates LÖVE's signature; Apple Silicon refuses
+          # to launch unsigned code, so re-sign ad-hoc.
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+
+          ditto -c -k --sequesterRsrc --keepParent "$app" "${GAME_NAME}-${VERSION}-macos.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: ${{ env.GAME_NAME }}-*-macos.zip
+          if-no-files-found: error
+
+  android:
+    name: Android
+    needs: love
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: "21.3.6528147"
+      BUILD_TOOLS: "31.0.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: love
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: Install Android SDK components
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "ndk;${NDK_VERSION}" "build-tools;${BUILD_TOOLS}" "platforms;android-31" > /dev/null
+
+      - name: Fetch love-android
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules -b "$LOVE_VERSION" https://github.com/love2d/love-android.git love-android
+
+      - name: Configure embedded game
+        working-directory: love-android
+        env:
+          VERSION: ${{ needs.love.outputs.version }}
+        run: |
+          cp "../${GAME_NAME}.love" app/src/embed/assets/game.love
+          sed -i \
+            -e "s/applicationId '.*'/applicationId '${BUNDLE_ID}'/" \
+            -e "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" \
+            -e "s/versionName '.*'/versionName '${VERSION}'/" \
+            app/build.gradle
+          sed -i "s/LÖVE for Android/${GAME_TITLE}/g" app/src/main/AndroidManifest.xml
+          grep -E "applicationId|versionCode|versionName" app/build.gradle
+          grep -n "android:label" app/src/main/AndroidManifest.xml
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-love-android-${{ env.LOVE_VERSION }}
+
+      - name: Build APK
+        working-directory: love-android
+        run: ./gradlew --no-daemon assembleEmbedNoRecordRelease
+
+      - name: Sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          tools="$ANDROID_HOME/build-tools/${BUILD_TOOLS}"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set; signing with a throwaway key. Updates will require uninstalling the previous version."
+            KEYSTORE_PASSWORD=throwaway KEY_ALIAS=mordoria KEY_PASSWORD=throwaway
+            keytool -genkeypair -noprompt -keystore release.keystore -storepass "$KEYSTORE_PASSWORD" \
+              -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=${GAME_TITLE}"
+          fi
+          unsigned=$(find love-android/app/build/outputs/apk -name '*-unsigned.apk' | head -n1)
+          "$tools/zipalign" -p -f 4 "$unsigned" aligned.apk
+          "$tools/apksigner" sign --ks release.keystore --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --ks-key-alias "$KEY_ALIAS" --key-pass "pass:$KEY_PASSWORD" \
+            --out "${GAME_NAME}-${{ needs.love.outputs.version }}-android.apk" aligned.apk
+          "$tools/apksigner" verify "${GAME_NAME}-${{ needs.love.outputs.version }}-android.apk"
+          rm -f release.keystore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: ${{ env.GAME_NAME }}-*-android.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS
+    needs: love
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: love
+
+      - name: Fetch LÖVE iOS source and libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$LOVE_VERSION" -R love2d/love \
+            -p "love-${LOVE_VERSION}-ios-source.zip" -p "love-${LOVE_VERSION}-apple-libraries.zip"
+          ditto -x -k "love-${LOVE_VERSION}-ios-source.zip" .
+          ditto -x -k "love-${LOVE_VERSION}-apple-libraries.zip" .
+          mv love-apple-dependencies/iOS/libraries "love-${LOVE_VERSION}-ios-source/platform/xcode/ios/libraries"
+
+      - name: Build love-ios (unsigned)
+        working-directory: love-${{ env.LOVE_VERSION }}-ios-source/platform/xcode
+        run: |
+          xcodebuild -project love.xcodeproj -target love-ios -configuration Release \
+            -sdk iphoneos ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=12.0 \
+            PRODUCT_BUNDLE_IDENTIFIER="${BUNDLE_ID}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SYMROOT="$GITHUB_WORKSPACE/ios-build" \
+            build > xcodebuild.log 2>&1 || {
+              grep -E "error:" xcodebuild.log | head -n 50
+              tail -n 100 xcodebuild.log
+              exit 1
+            }
+          tail -n 20 xcodebuild.log
+
+      - name: Package IPA
+        env:
+          VERSION: ${{ needs.love.outputs.version }}
+        run: |
+          app=$(find ios-build -maxdepth 2 -type d -path '*Release-iphoneos/*.app' | head -n1)
+          echo "Built $app"
+          cp "${GAME_NAME}.love" "$app/${GAME_NAME}.love"
+
+          plist="$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${GAME_TITLE}" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION%%[-+]*}" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$plist"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleDocumentTypes" "$plist" || true
+          /usr/libexec/PlistBuddy -c "Delete :UTExportedTypeDeclarations" "$plist" || true
+          /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled false" "$plist" || true
+          for key in UISupportedInterfaceOrientations "UISupportedInterfaceOrientations~ipad"; do
+            /usr/libexec/PlistBuddy -c "Delete :$key" "$plist" || true
+            /usr/libexec/PlistBuddy -c "Add :$key array" "$plist"
+            /usr/libexec/PlistBuddy -c "Add :$key: string UIInterfaceOrientationLandscapeLeft" "$plist"
+            /usr/libexec/PlistBuddy -c "Add :$key: string UIInterfaceOrientationLandscapeRight" "$plist"
+          done
+
+          mkdir Payload
+          cp -R "$app" Payload/
+          zip -q -r -y "${GAME_NAME}-${VERSION}-ios-unsigned.ipa" Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: ${{ env.GAME_NAME }}-*-ios-unsigned.ipa
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [love, windows, linux, macos, android, ios]
+    if: needs.love.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Rename .love
+        run: mv "artifacts/${GAME_NAME}.love" "artifacts/${GAME_NAME}-${{ needs.love.outputs.version }}.love"
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'EOF'
+          ## Downloads
+
+          | Platform | File | How to run |
+          | --- | --- | --- |
+          | Windows (64-bit) | `*-windows-x64.zip` | Unzip and run `Mordoria.exe`. If SmartScreen warns, click *More info* → *Run anyway*. |
+          | macOS (Intel & Apple Silicon) | `*-macos.zip` | Unzip and move *Towers of Mordoria* to Applications. The app is not notarized: right-click → *Open* the first time, or run `xattr -cr "/Applications/Towers of Mordoria.app"`. |
+          | Linux (x86_64) | `*-linux-x86_64.AppImage` | `chmod +x` the file and run it. |
+          | Android | `*-android.apk` | Allow installing from unknown sources and open the APK. |
+          | iOS / iPadOS | `*-ios-unsigned.ipa` | Unsigned; sideload with AltStore, SideStore or Sideloadly (they sign it with your Apple ID). |
+          | Any platform with LÖVE 11.4 | `*.love` | `love Mordoria-*.love` |
+
+          The game was designed for keyboard and mouse at 1920×1080; mobile builds are experimental.
+          EOF
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.love.outputs.version }}
+          name: ${{ env.GAME_TITLE }} v${{ needs.love.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ inputs.prerelease || false }}
+          body_path: notes.md
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: artifacts/*
