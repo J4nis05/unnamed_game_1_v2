@@ -1,8 +1,11 @@
 // This is a shader that will outline any shape with a red outline
 
 uniform vec2 textureSize;
-uniform float outlineWidth = 3.0;
-uniform vec4 outlineColor = vec4(1.0, 0.0, 0.0, 1.0); // Red outline
+uniform float outline_width;
+uniform vec4 outline_color;
+
+// GLSL ES requires constant loop bounds; widths beyond this are clamped.
+const float MAX_OUTLINE_WIDTH = 8.0;
 
 vec4 effect(vec4 color, Image tex, vec2 texture_coords, vec2 screen_coords) {
     // Sample the current pixel
@@ -16,14 +19,14 @@ vec4 effect(vec4 color, Image tex, vec2 texture_coords, vec2 screen_coords) {
         // Check surrounding pixels within the outline width
         bool hasNeighbor = false;
         
-        for (float x = -outlineWidth; x <= outlineWidth; x++) {
-            for (float y = -outlineWidth; y <= outlineWidth; y++) {
+        for (float x = -MAX_OUTLINE_WIDTH; x <= MAX_OUTLINE_WIDTH; x += 1.0) {
+            for (float y = -MAX_OUTLINE_WIDTH; y <= MAX_OUTLINE_WIDTH; y += 1.0) {
                 // Skip checking the current pixel
-                if (x == 0 && y == 0) continue;
+                if (x == 0.0 && y == 0.0) continue;
                 
                 // Calculate distance from center
                 float dist = sqrt(x*x + y*y);
-                if (dist > outlineWidth) continue;
+                if (dist > outline_width) continue;
                 
                 // Sample neighbor
                 vec4 neighbor = Texel(tex, texture_coords + vec2(x, y) * step);
@@ -39,7 +42,7 @@ vec4 effect(vec4 color, Image tex, vec2 texture_coords, vec2 screen_coords) {
         
         // Return outline color if we're on an edge
         if (hasNeighbor) {
-            return outlineColor;
+            return outline_color;
         }
         
         return pixelColor * color;

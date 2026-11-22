@@ -1,7 +1,7 @@
-uniform float fadeEdge = 0.3; // Size of fade edge (0.0 to 0.5)
-uniform vec4 fadeColor = vec4(0.1, 0.1, 0.15, 1.0); // Color to fade to (dark gray/blue)
-uniform float fadeTime = 0.0; // Animation progress (0.0 to 1.0)
-uniform float time = 0.0; // Global time for animations
+uniform float fadeEdge; // Size of fade edge (0.0 to 0.5)
+uniform vec4 fadeColor; // Color to fade to (dark gray/blue)
+uniform float fadeTime; // Animation progress (0.0 to 1.0)
+uniform float time; // Global time for animations
 
 // Deterministic pattern function using sine waves
 float pattern(vec2 st) {

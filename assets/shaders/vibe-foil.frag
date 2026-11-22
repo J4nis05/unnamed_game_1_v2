@@ -3,12 +3,12 @@ uniform vec2 u_mouse;      // Mouse position relative to texture (0.0 to 1.0)
 uniform float u_time;      // Time for animation
 
 // Customizable parameters (with defaults)
-uniform float u_rainbow_intensity = 1.5;      // Rainbow color intensity [1.0-2.0]
-uniform float u_rainbow_speed = 0.3;          // Speed of rainbow color cycling [0.1-0.5]
-uniform float u_pattern_density = 28.0;       // Density of holographic patterns [15.0-40.0]
-uniform float u_effect_intensity = 1.2;       // Overall effect intensity [0.8-1.5]
-uniform float u_flash_intensity = 0.4;        // Intensity of flashy highlights [0.2-0.6]
-uniform float u_metallic_feel = 0.7;          // Metallic reflectiveness [0.5-1.0]
+const float u_rainbow_intensity = 1.5;      // Rainbow color intensity [1.0-2.0]
+const float u_rainbow_speed = 0.3;          // Speed of rainbow color cycling [0.1-0.5]
+const float u_pattern_density = 28.0;       // Density of holographic patterns [15.0-40.0]
+const float u_effect_intensity = 1.2;       // Overall effect intensity [0.8-1.5]
+const float u_flash_intensity = 0.4;        // Intensity of flashy highlights [0.2-0.6]
+const float u_metallic_feel = 0.7;          // Metallic reflectiveness [0.5-1.0]
 
 // GLSL utility functions
 float noise(vec2 n) {

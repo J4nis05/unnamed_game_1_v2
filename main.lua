@@ -1,4 +1,8 @@
 package.path = package.path .. ";packages/?.lua;packages/?/init.lua"
+-- package.path only covers loose files on disk; fused/.love builds need this.
+love.filesystem.setRequirePath(
+  love.filesystem.getRequirePath() .. ";packages/?.lua;packages/?/init.lua"
+)
 
 -- WHETHER THIS IS A PRODUCTION BUILD!
 PRODUCTION = false

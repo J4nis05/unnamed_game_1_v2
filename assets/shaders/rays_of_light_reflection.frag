@@ -2,8 +2,8 @@
 uniform vec2 u_mouse; // Mouse position in screen coordinates
 uniform vec2 u_resolution; // Screen resolution
 uniform float u_time; // Time for animation
-uniform float u_intensity = 0.8; // Intensity of the light effect
-uniform float u_speed = 0.5; // Speed of light ray movement
+const float u_intensity = 0.8; // Intensity of the light effect
+const float u_speed = 0.5; // Speed of light ray movement
 
 // HSV to RGB conversion function
 vec3 hsv2rgb(vec3 c) {
