@@ -146,7 +146,7 @@ jobs:
   macos:
     name: macOS
     needs: love
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -199,16 +199,19 @@ jobs:
         with:
           name: love
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "11"
-
       - name: Install Android SDK components
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
-            "ndk;${NDK_VERSION}" "build-tools;${BUILD_TOOLS}" "platforms;android-31" > /dev/null
+            "ndk;${NDK_VERSION}" "build-tools;${BUILD_TOOLS}" "platforms;android-31" | grep -v "^\\[" || true
+          test -d "$ANDROID_HOME/ndk/${NDK_VERSION}"
+          test -d "$ANDROID_HOME/build-tools/${BUILD_TOOLS}"
+
+      # love-android 11.4 uses Android Gradle Plugin 7.0, which needs JDK 11.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
 
       - name: Fetch love-android
         run: git clone --depth 1 --recurse-submodules --shallow-submodules -b "$LOVE_VERSION" https://github.com/love2d/love-android.git love-android
@@ -273,7 +276,7 @@ jobs:
   ios:
     name: iOS
     needs: love
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
